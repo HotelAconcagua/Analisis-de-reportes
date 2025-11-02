@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reservas Hotel</title>
+    <!-- Carga de Tailwind CSS para estilos modernos y responsivos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Fuente principal Inter */
+        html { font-family: 'Inter', sans-serif; }
+        /* Estilos básicos para el cuerpo */
+        body {
+            background-color: #f7f9fb;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; 
+            padding-top: 40px;
+            padding-bottom: 40px;
+        }
+        /* Estilos para pestañas (Tabs) */
+        .tab-button {
+            padding: 10px 18px;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .tab-button.active {
+            background-color: #ffffff;
+            color: #4f46e5;
+            border-color: #e5e7eb;
+            border-bottom: 1px solid #ffffff; /* Oculta la línea inferior de la pestaña activa */
+        }
+        .tab-button:not(.active):hover {
+            background-color: #eef2ff;
+            color: #4338ca;
+        }
+        /* Estilo para la tabla generada */
+        #content-area table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        #content-area th, #content-area td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        #content-area th {
+            background-color: #1f2937;
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            text-align: center; 
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        /* Fila de filtros */
+        #content-area tr.filter-row th {
+            padding: 4px 16px;
+            background-color: #374151; /* Color un poco más claro para distinguirla */
+        }
+        #content-area tr.filter-row input {
+            width: 100%;
+            padding: 4px;
+            border-radius: 4px;
+            border: 1px solid #9ca3af;
+            font-size: 0.8rem;
+            color: #374151;
+        }
+        #content-area tr:nth-child(even) {
+            background-color: #f3f4f6;
+        }
+        /* Estilo específico para inputs de archivo para el botón "Subir" */
+        .file-input-custom input[type="file"] {
+            /* Oculta el input original */
+            opacity: 0;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .file-input-custom {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        /* Estiliza el label que ahora actúa como botón "Subir" */
+        .file-label {
+            display: block;
+            background-color: #4f46e5;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+        .file-label:hover {
+            background-color: #4338ca;
+        }
+        /* Estilos para tarjetas de alerta de Habitaciones Sin Asignar */
+        .unassigned-alert {
+            border-left: 6px solid #f97316; /* Color Naranja fuerte */
+            background-color: #fff7ed;
+        }
+    </style>
+    <!-- Carga de la librería SheetJS (xlsx) para leer archivos de Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+    <div class="w-full max-w-6xl p-6 bg-white shadow-2xl rounded-xl">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-gray-800">Reservas Hotel</h1>
+            <p class="text-gray-500 mt-2">
+                Cargue las listas de IN HOUSE, LLEGADAS y SALIDAS para análisis de coincidencias.
+            </p>
+        </header>
+
+        <!-- Contenedor de Pestañas -->
+        <div class="border-b border-gray-200 mb-6">
+            <nav class="flex space-x-2 -mb-px">
+                <button id="tab-menu" class="tab-button active" onclick="showTab('menu')">Menú / Análisis</button>
+                <button id="tab-in_house" class="tab-button" onclick="showTab('in_house')">IN HOUSE</button>
+                <button id="tab-llegadas" class="tab-button" onclick="showTab('llegadas')">LLEGADAS</button>
+                <button id="tab-salidas" class="tab-button" onclick="showTab('salidas')">SALIDAS</button>
+            </nav>
+        </div>
+
+        <!-- Contenido de las Pestañas -->
+        <div id="content-area" class="min-h-96">
+            
+            <!-- PESTAÑA 1: MENÚ / ANÁLISIS -->
+            <div id="tab-content-menu" class="p-4">
+                
+                <!-- Sección de Carga de Archivos -->
+                <div class="bg-indigo-50 border border-indigo-200 p-6 rounded-lg mb-8">
+                    <h3 class="text-xl font-semibold text-indigo-700 mb-4">Paso 1: Carga de Listas</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        
+                        <!-- Input IN HOUSE -->
+                        <div class="file-input-group">
+                            <label class="block text-sm font-medium text-indigo-700 mb-1">Lista IN HOUSE</label>
+                            <div class="file-input-custom">
+                                <label for="file-in_house" class="file-label" id="label-in_house">Subir</label>
+                                <input type="file" id="file-in_house" data-list-name="in_house" accept=".xlsx, .xls" onchange="handleFileChange(event)">
+                            </div>
+                            <!-- Estatus debajo del botón -->
+                            <p id="status-in_house" class="text-xs mt-2 text-gray-500 text-center">Ningún archivo cargado.</p>
+                        </div>
+                        
+                        <!-- Input LLEGADAS -->
+                        <div class="file-input-group">
+                            <label class="block text-sm font-medium text-indigo-700 mb-1">Lista LLEGADAS</label>
+                            <div class="file-input-custom">
+                                <label for="file-llegadas" class="file-label" id="label-llegadas">Subir</label>
+                                <input type="file" id="file-llegadas" data-list-name="llegadas" accept=".xlsx, .xls" onchange="handleFileChange(event)">
+                            </div>
+                            <!-- Estatus debajo del botón -->
+                            <p id="status-llegadas" class="text-xs mt-2 text-gray-500 text-center">Ningún archivo cargado.</p>
+                        </div>
+                        
+                        <!-- Input SALIDAS -->
+                        <div class="file-input-group">
+                            <label class="block text-sm font-medium text-indigo-700 mb-1">Lista SALIDAS</label>
+                            <div class="file-input-custom">
+                                <label for="file-salidas" class="file-label" id="label-salidas">Subir</label>
+                                <input type="file" id="file-salidas" data-list-name="salidas" accept=".xlsx, .xls" onchange="handleFileChange(event)">
+                            </div>
+                            <!-- Estatus debajo del botón -->
+                            <p id="status-salidas" class="text-xs mt-2 text-gray-500 text-center">Ningún archivo cargado.</p>
+                        </div>
+
+                    </div>
+                    
+                    <button id="process-button" onclick="processAllFiles()" class="w-full mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 disabled:opacity-50" disabled>
+                        Procesar
+                    </button>
+                    <p id="processing-status" class="text-center mt-3 text-sm text-indigo-600" style="display:none;">Presiona "Procesar" para analizar los datos y ver las coincidencias.</p>
+                </div>
+                
+                <!-- Sección de Resumen de Reservas Únicas -->
+                <div class="bg-white border border-gray-200 p-6 rounded-lg mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">Resumen de Reservas Únicas</h3>
+                    <div id="summary-output" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm font-medium text-gray-500">IN HOUSE</p>
+                            <p id="count-in_house" class="text-2xl font-bold text-gray-800">-</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm font-medium text-gray-500">LLEGADAS</p>
+                            <p id="count-llegadas" class="text-2xl font-bold text-green-600">-</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm font-medium text-gray-500">SALIDAS</p>
+                            <p id="count-salidas" class="text-2xl font-bold text-red-600">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sección CRÍTICA: Habitaciones Sin Asignar -->
+                <div class="bg-white border border-gray-200 p-6 rounded-lg mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4 flex items-center">
+                        🚨 Habitaciones de LLEGADAS Sin Asignar
+                        <span id="unassigned-count" class="ml-3 px-3 py-1 bg-orange-500 text-white text-sm font-bold rounded-full">0</span>
+                    </h3>
+                    
+                    <div id="unassigned-results" class="space-y-4">
+                        <p class="text-center text-gray-500 py-4">No hay reservas de LLEGADAS sin número de habitación asignado.</p>
+                    </div>
+                </div>
+
+                <!-- Sección de Resultados del Análisis (Coincidencias) -->
+                <div class="bg-white border border-gray-200 p-6 rounded-lg">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4 flex items-center">
+                        Coincidencias (Extensión)
+                        <span id="match-count" class="ml-3 px-3 py-1 bg-red-500 text-white text-sm font-bold rounded-full">0</span>
+                    </h3>
+                    
+                    <div id="match-results" class="space-y-4">
+                        <p class="text-center text-gray-500 py-4">Cargue y procese las listas para ver las coincidencias entre LLEGADAS y SALIDAS.</p>
+                    </div>
+                </div>
+
+            </div>
+            
+            <!-- PESTAÑA 2: IN HOUSE -->
+            <div id="tab-content-in_house" class="p-4 hidden">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Datos IN HOUSE</h3>
+                <div class="mb-4">
+                    <input type="text" id="global-search-in_house" oninput="filterTable('in_house')" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Búsqueda rápida en toda la tabla (Código, Cliente, Habitación, etc.)">
+                </div>
+                <div id="output-in_house" class="overflow-x-auto shadow-md rounded-lg max-h-[60vh]"></div>
+            </div>
+
+            <!-- PESTAÑA 3: LLEGADAS -->
+            <div id="tab-content-llegadas" class="p-4 hidden">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Datos LLEGADAS</h3>
+                <div class="mb-4">
+                    <input type="text" id="global-search-llegadas" oninput="filterTable('llegadas')" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Búsqueda rápida en toda la tabla (Código, Cliente, Habitación, etc.)">
+                </div>
+                <div id="output-llegadas" class="overflow-x-auto shadow-md rounded-lg max-h-[60vh]"></div>
+            </div>
+
+            <!-- PESTAÑA 4: SALIDAS -->
+            <div id="tab-content-salidas" class="p-4 hidden">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Datos SALIDAS</h3>
+                <div class="mb-4">
+                    <input type="text" id="global-search-salidas" oninput="filterTable('salidas')" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Búsqueda rápida en toda la tabla (Código, Cliente, Habitación, etc.)">
+                </div>
+                <div id="output-salidas" class="overflow-x-auto shadow-md rounded-lg max-h-[60vh]"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Clave de almacenamiento local para persistencia de datos
+        const STORAGE_KEY = 'hotel_reservas_data';
+
+        // Almacena los ArrayBuffers de los archivos cargados
+        const fileBuffers = {
+            in_house: null,
+            llegadas: null,
+            salidas: null,
+        };
+
+        // Almacena los datos procesados y reordenados (headers y rows)
+        const processedData = {
+            in_house: null,
+            llegadas: null,
+            salidas: null,
+        };
+        
+        // Almacena los recuentos de reservas únicas
+        const reservationCounts = {
+            in_house: 0,
+            llegadas: 0,
+            salidas: 0,
+        };
+
+
+        // Define el orden EXACTO de las columnas que el usuario desea
+        const PREFERRED_ORDER = [
+            "Código de Reserva", // 1
+            "N° Habitacion",     // 2 
+            "Cliente",           // 3
+            "Adultos",           // 4
+            "Check In",          // 5
+            "Check Out",         // 6 
+            "Noches",            // 7
+            "Categoría",         // 8 
+            "Organizacion",      // 9 
+            "Bedding",           // 10
+            "Menores",           // 11
+            "Comentarios",       // 12
+            "Grupo"              // 13
+        ];
+
+        // Columnas que deben tener contenido centrado
+        const CENTERED_COLUMNS = new Set([
+            "N° Habitacion", 
+            "Adultos", 
+            "Check In", 
+            "Check Out", 
+            "Noches", 
+            "Menores"
+        ]);
+
+        // Define las columnas que NUNCA deben mostrarse
+        const COLUMNS_TO_EXCLUDE = ["Accesibilidad"];
+        const EXCLUDED_NORMALIZED = new Set(COLUMNS_TO_EXCLUDE.map(normalizeText));
+        
+        /**
+         * Normaliza una cadena de texto a minúsculas, elimina espacios y acentos, 
+         * para una comparación robusta (usado para clientes y encabezados).
+         */
+        function normalizeText(text) {
+            if (typeof text !== 'string') return '';
+            return text.toLowerCase()
+                       .normalize("NFD")
+                       .replace(/[\u0300-\u036f]/g, "")
+                       .trim();
+        }
+
+        /**
+         * Habilita/deshabilita el botón de procesamiento según la existencia de buffers.
+         */
+        function updateProcessButtonState() {
+            const button = document.getElementById('process-button');
+            const statusElement = document.getElementById('processing-status');
+            const canProcess = fileBuffers.llegadas !== null && fileBuffers.salidas !== null;
+            
+            button.disabled = !canProcess;
+            
+            if (canProcess) {
+                statusElement.textContent = 'Presiona "Procesar" para analizar los datos y ver las coincidencias.';
+                statusElement.style.display = 'block';
+                statusElement.classList.remove('text-red-600');
+                statusElement.classList.add('text-indigo-600');
+            } else {
+                statusElement.textContent = 'Necesitas cargar las listas LLEGADAS y SALIDAS para el análisis.';
+                statusElement.style.display = 'block';
+                statusElement.classList.remove('text-indigo-600');
+                statusElement.classList.add('text-red-600');
+            }
+        }
+
+        /**
+         * Lee el archivo seleccionado y almacena el ArrayBuffer.
+         */
+        function handleFileChange(event) {
+            const file = event.target.files[0];
+            const listName = event.target.dataset.listName;
+            const statusElement = document.getElementById(`status-${listName}`);
+            const labelElement = document.getElementById(`label-${listName}`);
+
+            if (!file) {
+                fileBuffers[listName] = null;
+                statusElement.textContent = 'Ningún archivo cargado.';
+                statusElement.classList.remove('text-green-600');
+                labelElement.textContent = 'Subir';
+                updateProcessButtonState();
+                return;
+            }
+
+            statusElement.textContent = `Cargando ${file.name}...`;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Almacena el buffer binario
+                fileBuffers[listName] = new Uint8Array(e.target.result);
+                statusElement.textContent = `Archivo '${file.name}' listo.`;
+                statusElement.classList.add('text-green-600');
+                labelElement.textContent = 'Subir'; // Reset button label
+                updateProcessButtonState();
+            };
+            reader.onerror = function() {
+                statusElement.textContent = `Error al leer el archivo ${file.name}.`;
+                statusElement.classList.remove('text-green-600');
+                fileBuffers[listName] = null;
+                labelElement.textContent = 'Subir'; // Reset button label
+                updateProcessButtonState();
+            };
+
+            reader.readAsArrayBuffer(file);
+            
+            // Limpiar el valor del input para asegurar que el evento 'change' se dispare
+            event.target.value = null;
+            labelElement.textContent = 'Procesando...'; // Show temporary status on button
+        }
+        
+        /**
+         * Lógica de reordenamiento y filtrado de datos (manteniendo la función anterior).
+         */
+        function reorderData(data, originalHeaders) {
+            if (data.length === 0) return { reorderedHeaders: [], reorderedRows: [] };
+
+            const headerIndexMap = new Map(); 
+            originalHeaders.forEach((header, index) => {
+                if (!header) return; 
+                const normalizedHeader = normalizeText(header);
+                if (!EXCLUDED_NORMALIZED.has(normalizedHeader) && !headerIndexMap.has(normalizedHeader)) { 
+                    headerIndexMap.set(normalizedHeader, index);
+                }
+            });
+
+            const reorderedHeaders = [];
+            const newIndexOrder = []; 
+            const usedIndexes = new Set();
+            
+            // a. Añadir columnas preferidas en el orden solicitado
+            PREFERRED_ORDER.forEach(preferredHeader => {
+                const normalizedHeader = normalizeText(preferredHeader);
+                if (headerIndexMap.has(normalizedHeader)) {
+                    const originalIndex = headerIndexMap.get(normalizedHeader);
+                    
+                    if (!usedIndexes.has(originalIndex)) {
+                        reorderedHeaders.push(originalHeaders[originalIndex]); 
+                        newIndexOrder.push(originalIndex);
+                        usedIndexes.add(originalIndex);
+                    }
+                }
+            });
+
+            // b. Añadir el resto de las columnas
+            originalHeaders.forEach((header, index) => {
+                if (headerIndexMap.has(normalizeText(header)) && !usedIndexes.has(index)) {
+                    reorderedHeaders.push(header);
+                    newIndexOrder.push(index);
+                    usedIndexes.add(index);
+                }
+            });
+
+            // c. Reordenar las filas
+            const originalRows = data.slice(1);
+            const reorderedRows = originalRows.map(row => {
+                const newRow = {}; // Usamos objeto para facilitar la búsqueda por nombre de columna
+                newIndexOrder.forEach((originalIndex, newIndex) => {
+                    const headerName = reorderedHeaders[newIndex];
+                    newRow[headerName] = row[originalIndex] === undefined ? '' : row[originalIndex];
+                });
+                return newRow;
+            });
+            
+            return { reorderedHeaders, reorderedRows };
+        }
+
+        /**
+         * Convierte la matriz de datos (Array de Objetos) a una tabla HTML.
+         */
+        function buildHtmlTable(listName, headers, rows) {
+            if (!headers || headers.length === 0 || rows.length === 0) {
+                return '<p class="text-center text-gray-400 py-10">No se encontraron datos.</p>';
+            }
+            
+            // Guarda las filas originales para que la función de filtro pueda trabajar con ellas
+            processedData[listName].allRows = rows;
+
+            const columnStyles = headers.map(header => {
+                return CENTERED_COLUMNS.has(header) ? 'text-center' : 'text-left';
+            });
+
+            let html = `
+                <table class="min-w-full divide-y divide-gray-200" id="table-${listName}">
+                    <thead>
+                        <!-- Fila de Encabezados -->
+                        <tr>
+                            ${headers.map(header => `<th scope="col" class="px-6 py-3">${header || ''}</th>`).join('')}
+                        </tr>
+                        <!-- Fila de Filtros de Columna -->
+                        <tr class="filter-row">
+                            ${headers.map((header, index) => `
+                                <th scope="col">
+                                    <input type="text" 
+                                        placeholder="Filtrar por ${header}" 
+                                        data-col-index="${index}" 
+                                        data-col-name="${header}"
+                                        oninput="filterTable('${listName}')" 
+                                        class="filter-input-${listName}">
+                                </th>
+                            `).join('')}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 bg-white" id="tbody-${listName}">
+                        ${rows.map(row => `
+                            <tr class="hover:bg-indigo-50 transition duration-150">
+                                ${headers.map((header, index) => {
+                                    const cell = row[header];
+                                    const alignmentClass = columnStyles[index];
+                                    return `<td class="px-6 py-4 text-sm text-gray-700 ${alignmentClass}">${cell}</td>`;
+                                }).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            return html;
+        }
+        
+        /**
+         * Aplica los filtros de búsqueda rápida y de columna a la tabla.
+         */
+        function filterTable(listName) {
+            const data = processedData[listName];
+            if (!data || !data.allRows) return;
+            
+            const allRows = data.allRows;
+            const headers = data.reorderedHeaders;
+            const tbody = document.getElementById(`tbody-${listName}`);
+            const globalSearchTerm = normalizeText(document.getElementById(`global-search-${listName}`).value);
+            const columnFilters = Array.from(document.querySelectorAll(`.filter-input-${listName}`))
+                                        .map(input => ({
+                                            name: input.dataset.colName,
+                                            term: normalizeText(input.value)
+                                        }))
+                                        .filter(f => f.term.length > 0);
+
+            let filteredRows = allRows;
+
+            // 1. Filtrado por Búsqueda Global
+            if (globalSearchTerm.length > 0) {
+                filteredRows = filteredRows.filter(row => {
+                    // Comprobar si algún valor en la fila coincide con el término de búsqueda global
+                    return headers.some(header => {
+                        const cellValue = row[header] ? row[header].toString() : '';
+                        return normalizeText(cellValue).includes(globalSearchTerm);
+                    });
+                });
+            }
+
+            // 2. Filtrado por Columna Específica
+            if (columnFilters.length > 0) {
+                 filteredRows = filteredRows.filter(row => {
+                    // La fila debe coincidir con TODOS los filtros de columna
+                    return columnFilters.every(filter => {
+                        const cellValue = row[filter.name] ? row[filter.name].toString() : '';
+                        return normalizeText(cellValue).includes(filter.term);
+                    });
+                });
+            }
+
+
+            // 3. Renderizar las filas filtradas
+            const columnStyles = headers.map(header => {
+                return CENTERED_COLUMNS.has(header) ? 'text-center' : 'text-left';
+            });
+            
+            const newTbodyContent = filteredRows.map(row => `
+                <tr class="hover:bg-indigo-50 transition duration-150">
+                    ${headers.map((header, index) => {
+                        const cell = row[header];
+                        const alignmentClass = columnStyles[index];
+                        return `<td class="px-6 py-4 text-sm text-gray-700 ${alignmentClass}">${cell}</td>`;
+                    }).join('')}
+                </tr>
+            `).join('');
+
+            tbody.innerHTML = newTbodyContent || `<tr><td colspan="${headers.length}" class="text-center py-4 text-gray-500">No hay resultados que coincidan con los filtros.</td></tr>`;
+        }
+
+
+        /**
+         * Cuenta la cantidad de códigos de reserva únicos en una lista de filas.
+         */
+        function countUniqueReservations(rows) {
+            if (!rows || rows.length === 0) return 0;
+            const uniqueCodes = new Set();
+            rows.forEach(row => {
+                const code = row['Código de Reserva'];
+                if (code) {
+                    uniqueCodes.add(code.toString().trim());
+                }
+            });
+            return uniqueCodes.size;
+        }
+        
+        /**
+         * Renderiza el resumen de reservas únicas en la sección de menú.
+         */
+        function renderSummary() {
+            document.getElementById('count-in_house').textContent = reservationCounts.in_house;
+            document.getElementById('count-llegadas').textContent = reservationCounts.llegadas;
+            document.getElementById('count-salidas').textContent = reservationCounts.salidas;
+        }
+        
+        // --- NUEVA FUNCIONALIDAD: DETECCIÓN DE HABITACIONES SIN ASIGNAR ---
+        /**
+         * Encuentra reservas de LLEGADAS donde el campo 'N° Habitacion' contiene "No Asignada".
+         */
+        function findUnassignedRooms(llegadasRows) {
+            if (!llegadasRows) return [];
+            
+            const unassignedKeyword = normalizeText("No Asignada");
+            
+            return llegadasRows.filter(row => {
+                const roomNumber = row['N° Habitacion'];
+                if (typeof roomNumber === 'string') {
+                    // Normaliza el contenido de la celda y comprueba si contiene la palabra clave
+                    return normalizeText(roomNumber).includes(unassignedKeyword);
+                }
+                // También considera celdas completamente vacías
+                return !roomNumber || roomNumber.toString().trim() === '';
+            });
+        }
+
+        /**
+         * Renderiza los resultados de Habitaciones Sin Asignar.
+         */
+        function renderUnassignedRooms(unassignedRooms) {
+            const resultsContainer = document.getElementById('unassigned-results');
+            document.getElementById('unassigned-count').textContent = unassignedRooms.length;
+
+            if (unassignedRooms.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-center text-green-600 py-4 font-semibold">¡Perfecto! Todas las reservas de LLEGADAS tienen un número de habitación asignado.</p>';
+                return;
+            }
+
+            resultsContainer.innerHTML = `
+                ${unassignedRooms.map((reserva, index) => `
+                    <div class="p-4 rounded-lg shadow-md unassigned-alert">
+                        <p class="font-bold text-base text-orange-700">RESERVA SIN ASIGNAR (${index + 1})</p>
+                        <p class="text-lg font-extrabold text-gray-900 mb-1">${reserva.Cliente}</p>
+                        <p class="text-sm"><strong>Código de Reserva:</strong> ${reserva['Código de Reserva']}</p>
+                        <p class="text-sm"><strong>Check In:</strong> <span class="text-orange-600 font-semibold">${reserva['Check In']}</span></p>
+                        <p class="text-sm mt-1 font-medium">Categoría: ${reserva['Categoría'] || 'N/A'} | Adultos: ${reserva.Adultos || 0}</p>
+                    </div>
+                `).join('')}
+            `;
+        }
+        // --- FIN DE NUEVA FUNCIONALIDAD ---
+
+        // --- FUNCIONES DE PERSISTENCIA ---
+        /**
+         * Guarda los datos procesados en localStorage.
+         */
+        function saveProcessedData() {
+            try {
+                // Prepara una versión de los datos sin la propiedad 'allRows' para evitar bucles de referencia
+                const dataToSave = {
+                    processedData: {},
+                    reservationCounts
+                };
+                
+                Object.keys(processedData).forEach(listName => {
+                    if (processedData[listName]) {
+                         // Solo guardamos los encabezados y las filas originales
+                        dataToSave.processedData[listName] = { 
+                            reorderedHeaders: processedData[listName].reorderedHeaders,
+                            reorderedRows: processedData[listName].reorderedRows,
+                        };
+                    }
+                });
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+            } catch (error) {
+                console.error("Error al guardar en localStorage:", error);
+            }
+        }
+
+        /**
+         * Carga los datos procesados desde localStorage al inicio.
+         */
+        function loadProcessedData() {
+            try {
+                const savedData = localStorage.getItem(STORAGE_KEY);
+                if (savedData) {
+                    const parsedData = JSON.parse(savedData);
+                    
+                    // Restaurar conteos y datos procesados
+                    Object.assign(reservationCounts, parsedData.reservationCounts);
+                    
+                    // Restaurar processedData y añadir la clave 'allRows' para filtrado
+                    Object.keys(parsedData.processedData).forEach(listName => {
+                        const data = parsedData.processedData[listName];
+                        if (data) {
+                            processedData[listName] = {
+                                ...data,
+                                allRows: data.reorderedRows // 'allRows' es la referencia a las filas originales para el filtro
+                            };
+                        }
+                    });
+                    
+                    // Renderizar elementos de la interfaz con los datos cargados
+                    renderSummary();
+                    
+                    // Renderizar Habitaciones Sin Asignar
+                    const unassigned = findUnassignedRooms(processedData.llegadas ? processedData.llegadas.reorderedRows : null);
+                    renderUnassignedRooms(unassigned);
+
+                    // Renderizar Coincidencias Stay-Over
+                    const matches = (processedData.llegadas && processedData.salidas) 
+                                    ? findStayOvers(processedData.llegadas.reorderedRows, processedData.salidas.reorderedRows) 
+                                    : [];
+                    renderMatches(matches);
+
+                    // Renderizar las tablas de datos en sus pestañas
+                    Object.keys(processedData).forEach(listName => {
+                        const data = processedData[listName];
+                        if (data) {
+                            // Al cargar, usamos las filas originales (reorderedRows) para construir la tabla inicial
+                            document.getElementById(`output-${listName}`).innerHTML = buildHtmlTable(listName, data.reorderedHeaders, data.reorderedRows);
+                        }
+                    });
+
+                    document.getElementById('processing-status').textContent = 'Datos cargados automáticamente desde la última sesión.';
+                    document.getElementById('processing-status').classList.remove('text-red-600');
+                    document.getElementById('processing-status').classList.add('text-indigo-600');
+                    document.getElementById('processing-status').style.display = 'block';
+                }
+            } catch (error) {
+                console.error("Error al cargar desde localStorage:", error);
+            }
+        }
+        // --- FIN DE FUNCIONES DE PERSISTENCIA ---
+
+
+        /**
+         * Función principal llamada por el botón "Procesar".
+         */
+        function processAllFiles() {
+            document.getElementById('processing-status').textContent = 'Procesando y analizando...';
+            document.getElementById('processing-status').style.display = 'block';
+            document.getElementById('process-button').disabled = true;
+            document.getElementById('match-results').innerHTML = '<p class="text-center text-indigo-500 py-4">Analizando coincidencias...</p>';
+            document.getElementById('unassigned-results').innerHTML = '<p class="text-center text-indigo-500 py-4">Buscando reservas sin asignar...</p>';
+
+
+            // Mapea y procesa los 3 buffers (si existen)
+            Object.keys(fileBuffers).forEach(listName => {
+                const buffer = fileBuffers[listName];
+                if (buffer) {
+                    try {
+                        const workbook = XLSX.read(buffer, {type: 'array'});
+                        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+
+                        // Obtiene los datos en formato Array of Arrays (AoA) con formato de fecha
+                        const aoaData = XLSX.utils.sheet_to_json(worksheet, {
+                            header: 1, 
+                            raw: false, 
+                            dateNF: 'dd/mm/yyyy' 
+                        });
+                        
+                        // Reordena y filtra (de AoA a Array de Objetos)
+                        const originalHeaders = aoaData[0];
+                        const { reorderedHeaders, reorderedRows } = reorderData(aoaData, originalHeaders);
+                        
+                        // Almacenamos las filas procesadas como la base para el filtrado
+                        processedData[listName] = { 
+                            reorderedHeaders, 
+                            reorderedRows,
+                            allRows: reorderedRows // Se usa para la función de filtrado
+                        };
+                        
+                        // 1. Contar reservas únicas
+                        reservationCounts[listName] = countUniqueReservations(reorderedRows);
+
+                        // 2. Renderiza la tabla en su pestaña correspondiente (incluyendo filtros)
+                        document.getElementById(`output-${listName}`).innerHTML = buildHtmlTable(listName, reorderedHeaders, reorderedRows);
+                        
+                    } catch (error) {
+                        console.error(`Error procesando lista ${listName}:`, error);
+                        document.getElementById(`output-${listName}`).innerHTML = `<p class="text-center text-red-500 py-4">Error al procesar el archivo ${listName}.</p>`;
+                        processedData[listName] = null;
+                        reservationCounts[listName] = 0;
+                    }
+                } else {
+                    // Limpia la pestaña si no hay archivo
+                    processedData[listName] = null;
+                    reservationCounts[listName] = 0;
+                    document.getElementById(`output-${listName}`).innerHTML = '<p class="text-center text-gray-400 py-10">No se ha cargado ningún archivo para esta lista.</p>';
+                }
+            });
+            
+            // Renderiza el resumen de conteos
+            renderSummary();
+
+            // 4. Análisis de Habitaciones Sin Asignar (Solo necesita LLEGADAS)
+            const llegadasRows = processedData.llegadas ? processedData.llegadas.reorderedRows : null;
+            const unassignedRooms = findUnassignedRooms(llegadasRows);
+            renderUnassignedRooms(unassignedRooms);
+
+
+            // 5. Análisis de Coincidencias Stay-Over (Necesita LLEGADAS y SALIDAS)
+            if (processedData.llegadas && processedData.salidas) {
+                const matches = findStayOvers(processedData.llegadas.reorderedRows, processedData.salidas.reorderedRows);
+                renderMatches(matches);
+            } else {
+                 document.getElementById('match-results').innerHTML = '<p class="text-center text-gray-500 py-4">Faltan las listas LLEGADAS y/o SALIDAS para realizar el análisis de coincidencias.</p>';
+                 document.getElementById('match-count').textContent = '0';
+            }
+
+            // 6. Guardar los datos procesados para la próxima sesión
+            saveProcessedData();
+
+            document.getElementById('processing-status').style.display = 'none';
+            document.getElementById('process-button').disabled = false;
+        }
+
+        /**
+         * Encuentra coincidencias de clientes entre SALIDAS y LLEGADAS.
+         */
+        function findStayOvers(llegadasRows, salidasRows) {
+            const matches = [];
+            
+            // 1. Crear un mapa de clientes de LLEGADAS
+            const llegadasMap = new Map(); // Key: Cliente Normalizado, Value: Lista de reservas de Llegadas
+            llegadasRows.forEach(row => {
+                const clientName = row['Cliente'] || '';
+                const normalizedClient = normalizeText(clientName);
+                if (normalizedClient) {
+                    if (!llegadasMap.has(normalizedClient)) {
+                        llegadasMap.set(normalizedClient, []);
+                    }
+                    llegadasMap.get(normalizedClient).push(row);
+                }
+            });
+
+            // 2. Iterar sobre SALIDAS y buscar coincidencias en el mapa
+            salidasRows.forEach(salidaRow => {
+                const clientName = salidaRow['Cliente'] || '';
+                const normalizedClient = normalizeText(clientName);
+
+                if (llegadasMap.has(normalizedClient)) {
+                    const coincidentArrivals = llegadasMap.get(normalizedClient);
+                    
+                    // Solo emparejar una vez si es necesario, pero aquí emparejamos todas las reservas coincidentes
+                    coincidentArrivals.forEach(llegadaRow => {
+                        matches.push({
+                            cliente: clientName,
+                            salida: salidaRow,
+                            llegada: llegadaRow,
+                        });
+                    });
+                }
+            });
+
+            return matches;
+        }
+
+        /**
+         * Renderiza los resultados de las coincidencias.
+         */
+        function renderMatches(matches) {
+            const resultsContainer = document.getElementById('match-results');
+            document.getElementById('match-count').textContent = matches.length;
+
+            if (matches.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-center text-green-600 py-4 font-semibold">¡Felicidades! No se encontraron coincidencias (Stay-Overs) entre LLEGADAS y SALIDAS.</p>';
+                return;
+            }
+
+            resultsContainer.innerHTML = `
+                ${matches.map((match, index) => `
+                    <div class="p-4 border border-yellow-400 bg-yellow-50 rounded-lg shadow-md">
+                        <p class="font-bold text-lg text-yellow-800 mb-2">¡COINCIDENCIA ENCONTRADA! (${index + 1})</p>
+                        
+                        <p class="text-xl font-extrabold text-gray-900 mb-3">${match.cliente}</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <!-- Datos de SALIDA -->
+                            <div class="p-3 bg-white border border-gray-100 rounded-md">
+                                <span class="font-bold text-red-600 block mb-1">RESERVA DE SALIDA (Check-Out)</span>
+                                <p><strong>Código:</strong> ${match.salida['Código de Reserva']}</p>
+                                <p><strong>Habitación Actual:</strong> ${match.salida['N° Habitacion']}</p>
+                                <p><strong>Categoría:</strong> ${match.salida['Categoría'] || 'N/A'}</p>
+                                <p><strong>Bedding:</strong> ${match.salida['Bedding'] || 'N/A'}</p>
+                                <p><strong>Check Out:</strong> <span class="text-red-600 font-semibold">${match.salida['Check Out']}</span></p>
+                            </div>
+                            
+                            <!-- Datos de LLEGADA -->
+                            <div class="p-3 bg-white border border-gray-100 rounded-md">
+                                <span class="font-bold text-green-600 block mb-1">RESERVA DE LLEGADA (Check-In)</span>
+                                <p><strong>Código:</strong> ${match.llegada['Código de Reserva']}</p>
+                                <p><strong>Habitación Reservada:</strong> ${match.llegada['N° Habitacion'] || 'No Asignada'}</p>
+                                <p><strong>Categoría:</strong> ${match.llegada['Categoría'] || 'N/A'}</p>
+                                <p><strong>Bedding:</strong> ${match.llegada['Bedding'] || 'N/A'}</p>
+                                <p><strong>Check In:</strong> <span class="text-green-600 font-semibold">${match.llegada['Check In']}</span></p>
+                            </div>
+                        </div>
+                        <p class="mt-3 text-sm text-yellow-700 font-medium">Acción sugerida: Asigne la misma habitación (${match.salida['N° Habitacion']}) a la nueva reserva para evitar cambios.</p>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+
+        // --- LÓGICA DE PESTAÑAS ---
+        function showTab(tabId) {
+            // Oculta todos los contenidos
+            document.querySelectorAll('[id^="tab-content-"]').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            // Desactiva todos los botones
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active', 'bg-white', 'text-indigo-600');
+            });
+
+            // Muestra el contenido seleccionado
+            document.getElementById(`tab-content-${tabId}`).classList.remove('hidden');
+
+            // Activa el botón seleccionado
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+        }
+
+        // Inicializar la aplicación
+        document.addEventListener('DOMContentLoaded', () => {
+            showTab('menu');
+            loadProcessedData(); // Intentar cargar datos guardados
+            updateProcessButtonState();
+            
+            // Si no hay datos cargados, inicializar el resumen con guiones
+            if (reservationCounts.in_house === 0 && reservationCounts.llegadas === 0 && reservationCounts.salidas === 0) {
+                renderSummary(); 
+                renderUnassignedRooms([]); // Mostrar mensaje inicial de cero sin asignar
+            }
+        });
+
+    </script>
+
+</body>
+</html>
